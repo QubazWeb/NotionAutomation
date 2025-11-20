@@ -113,7 +113,7 @@ app.post("/notion-hook", async (req, res) => {
 
       // Create event in Google Calendar
       await calendar.events.insert({
-        calendarId: process.env.GOOGLE_CAL_ID,
+        calendarId: process.env.GCAL_ID,
         resource: {
           summary: name,
           start: {
