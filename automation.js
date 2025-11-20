@@ -73,12 +73,12 @@ app.post("/notion-hook", async (req, res) => {
 
     // Fetch full Notion page data
     const page = await notion.pages.retrieve({ page_id: pageId });
-    console.log("RAW PROPS:", page.properties);
-    const dateField = page.properties[PROP_DATE];
-    const blocksField = page.properties[PROP_BLOCKS];
-    const sendToCalendar = page.properties[PROP_SEND]?.checkbox;
+    const dateField = page.properties[decodeURIComponent(PROP_DATE)];
+    const blocksField = page.properties[decodeURIComponent(PROP_BLOCKS)];
+    const sendToCalendar =
+      page.properties[decodeURIComponent(PROP_SEND)]?.checkbox;
 
-    if (!updatedProps.includes(PROP_SEND)) {
+    if (!updatedProps.includes(decodeURIComponent(PROP_SEND))) {
       return res.json({ ignored: "No toggle" });
     }
 
