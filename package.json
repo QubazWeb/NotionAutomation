@@ -5,7 +5,7 @@
   "main": "automate.js",
   "type": "module",
   "scripts": {
-    "start": "node automate.js"
+    "start": "node automation.js"
   },
   "dependencies": {
     "express": "^4.19.2",
