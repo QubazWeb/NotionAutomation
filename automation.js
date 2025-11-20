@@ -1,116 +1,142 @@
 import express from "express";
 import bodyParser from "body-parser";
-import { Client } from "@notionhq/client";
-import calendars from "@googleapis/calendar";
+import dotenv from "dotenv";
+import { Client as NotionClient } from "@notionhq/client";
+import { google } from "googleapis";
+
+dotenv.config();
 
 const app = express();
+app.use(express.json());
 app.use(bodyParser.json());
 
-// -------------------------
-// ENV KEYS
-// -------------------------
-const NOTION_SECRET = process.env.NOTION_SECRET;
-const DATABASE_ID = process.env.NOTION_DATABASE_ID;
+// ---------------------------------------
+// GOOGLE CALENDAR AUTH
+// ---------------------------------------
+const auth = new google.auth.JWT(
+  process.env.GCAL_CLIENT_EMAIL,
+  null,
+  process.env.GCAL_PRIVATE_KEY.replace(/\\n/g, "\n"),
+  ["https://www.googleapis.com/auth/calendar"]
+);
 
-const GOOGLE_CLIENT_EMAIL = process.env.GOOGLE_CLIENT_EMAIL;
-const GOOGLE_PRIVATE_KEY = process.env.GOOGLE_PRIVATE_KEY;
-const GOOGLE_CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID;
+const calendar = google.calendar({ version: "v3", auth });
 
-// -------------------------
-// CLIENTS
-// -------------------------
-const notion = new Client({ auth: NOTION_SECRET });
-
-const googleCalendar = calendars.calendar_v3.Calendar({
-  auth: new calendars.auth.JWT({
-    email: GOOGLE_CLIENT_EMAIL,
-    key: GOOGLE_PRIVATE_KEY.replace(/\\n/g, "\n"),
-    scopes: ["https://www.googleapis.com/auth/calendar"],
-  }),
+// ---------------------------------------
+// NOTION CLIENT
+// ---------------------------------------
+const notion = new NotionClient({
+  auth: process.env.NOTION_SECRET,
 });
-
-// -------------------------
+// -----------------------
 // PROPERTY IDS
 // -------------------------
 const PROP_DATE = "x%5CaU"; // Date
 const PROP_BLOCKS = "QeVD"; // Choose daily blocks
 const PROP_SEND = "E%7C%3CB"; // SendToCalendar
 
-// -------------------------
-// HELPERS
-// -------------------------
+function parseDuration(raw) {
+  raw = raw.toLowerCase();
 
-async function getPage(pageId) {
-  return await notion.pages.retrieve({ page_id: pageId });
+  if (/^\d+\s*m(in)?$/.test(raw)) return parseInt(raw);
+  if (/^\d+\s*h(our)?$/.test(raw)) return parseInt(raw) * 60;
+
+  return null;
 }
 
-function buildEventTitle(blocks) {
-  if (!blocks || blocks.length === 0) return "Untitled";
+function parseBlock(text) {
+  // format: "[45MIN] Task name"
+  const match = text.match(/^\[(.+?)\]\s*(.+)$/);
+  if (!match) return null;
 
-  return blocks.map((b) => b.name.replace(/^\[\w+\]/, "").trim()).join(" • ");
+  const duration = parseDuration(match[1]);
+  const name = match[2];
+
+  return { duration, name };
 }
 
-async function createCalendarEvent(startTime, endTime, summary) {
-  return await googleCalendar.events.insert({
-    calendarId: GOOGLE_CALENDAR_ID,
-    requestBody: {
-      summary,
-      start: { dateTime: startTime },
-      end: { dateTime: endTime },
-    },
-  });
-}
+// ---------------------------------------
+// WEBHOOK ROUTE
+// ---------------------------------------
+app.post("/notion-hook", async (req, res) => {
+  console.log("📩 Incoming Notion Hook:", JSON.stringify(req.body, null, 2));
 
-// -------------------------
-// MAIN WEBHOOK HANDLER
-// -------------------------
-app.post("/notion-webhook", async (req, res) => {
   try {
-    console.log(
-      "📩 Incoming Notion Webhook:",
-      JSON.stringify(req.body, null, 2)
-    );
+    const eventType = req.body.type;
 
-    const event = req.body;
-    const pageId = event.entity.id;
-
-    // Always fetch full page data
-    const page = await getPage(pageId);
-    console.log("📄 Full Page Data Retrieved");
-
-    const props = page.properties;
-
-    const sendToCal = props[PROP_SEND]?.checkbox;
-    const dateProp = props[PROP_DATE]?.date;
-    const blocksProp = props[PROP_BLOCKS]?.multi_select;
-
-    // Only continue if checkbox is TRUE
-    if (!sendToCal) {
-      console.log("❌ SendToCalendar is OFF — nothing to do.");
-      return res.status(200).send("Ignored");
+    // We only care about property updates
+    if (eventType !== "page.properties_updated") {
+      return res.json({ ignored: true });
     }
 
-    if (!dateProp) {
-      console.log("⚠️ No date found. Cannot create event.");
-      return res.status(200).send("Missing date");
+    const updatedProps = req.body.data?.updated_properties || [];
+    const pageId = req.body.entity?.id;
+
+    // Require SendToCalendar to be toggled
+    if (!updatedProps.includes(PROP_SEND)) {
+      return res.json({ ignored: "No toggle" });
     }
 
-    const start = dateProp.start;
-    const end = dateProp.end || start;
-    const title = buildEventTitle(blocksProp);
+    // Fetch full Notion page data
+    const page = await notion.pages.retrieve({ page_id: pageId });
 
-    console.log("📆 Creating calendar event:", { start, end, title });
+    const dateField = page.properties[PROP_DATE];
+    const blocksField = page.properties[PROP_BLOCKS];
+    const sendToCalendar = page.properties[PROP_SEND]?.checkbox;
 
-    await createCalendarEvent(start, end, title);
+    if (!sendToCalendar) {
+      return res.json({ ignored: "Checkbox is false" });
+    }
 
-    console.log("✅ Google Calendar Event Created!");
+    // Extract the date
+    const startTime = dateField?.date?.start;
+    if (!startTime) {
+      console.log("❌ No date found");
+      return res.json({ error: "Missing date" });
+    }
 
-    return res.status(200).send("Success");
-  } catch (error) {
-    console.error("❌ ERROR", error);
-    return res.status(500).send("Error");
+    // Extract blocks (multi-select)
+    const blockItems = blocksField?.multi_select?.map((b) => b.name) || [];
+    if (blockItems.length === 0) {
+      console.log("❌ No blocks found");
+      return res.json({ error: "Missing blocks" });
+    }
+
+    let currentStart = new Date(startTime);
+
+    for (const block of blockItems) {
+      const parsed = parseBlock(block);
+      if (!parsed) continue;
+
+      const { duration, name } = parsed;
+
+      const eventStart = new Date(currentStart);
+      const eventEnd = new Date(eventStart.getTime() + duration * 60000);
+
+      // Create event in Google Calendar
+      await calendar.events.insert({
+        calendarId: "primary",
+        resource: {
+          summary: name,
+          start: { dateTime: eventStart.toISOString() },
+          end: { dateTime: eventEnd.toISOString() },
+        },
+      });
+
+      console.log("✅ Created event:", name, eventStart, eventEnd);
+
+      currentStart = eventEnd; // Move pointer
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("🔥 ERROR:", err);
+    res.status(500).json({ error: "Server error" });
   }
 });
 
-// -------------------------
-app.listen(10000, () => console.log("🚀 Server running on :10000"));
+// ---------------------------------------
+// START SERVER
+// ---------------------------------------
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));

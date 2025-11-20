@@ -1,20 +1,17 @@
 {
   "name": "notion-automation",
   "version": "1.0.0",
-  "description": "Notion → Google Calendar automation server",
-  "main": "server.js",
+  "description": "Notion → Google Calendar automation",
+  "main": "automate.js",
   "type": "module",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js"
+    "start": "node automate.js"
   },
   "dependencies": {
-    "@googleapis/calendar": "^3.2.0",
-    "@notionhq/client": "^2.2.9",
+    "express": "^4.19.2",
     "body-parser": "^1.20.2",
-    "express": "^4.19.2"
-  },
-  "devDependencies": {
-    "nodemon": "^3.1.0"
+    "dotenv": "^16.4.5",
+    "googleapis": "^131.0.0",
+    "@notionhq/client": "^2.2.9"
   }
 }
