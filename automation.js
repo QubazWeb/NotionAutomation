@@ -77,11 +77,6 @@ app.post("/notion-hook", async (req, res) => {
     const dateField = page.properties["Date"];
     const blocksField = page.properties["Choose daily blocks"];
     const sendToCalendar = page.properties["SendToCalendar"]?.checkbox;
-    console.log(page);
-    console.log(page.properties);
-    console.log("data field: " + dateField);
-    console.log("blocks field: " + blocksField);
-    console.log("calendar field: " + sendToCalendar);
 
     if (!updatedProps.includes(PROP_SEND)) {
       return res.json({ ignored: "No toggle" });
@@ -118,7 +113,7 @@ app.post("/notion-hook", async (req, res) => {
 
       // Create event in Google Calendar
       await calendar.events.insert({
-        calendarId: "primary",
+        calendarId: process.env.GCAL_ID,
         resource: {
           summary: name,
           start: { dateTime: eventStart.toISOString() },
