@@ -77,11 +77,13 @@ app.post("/notion-hook", async (req, res) => {
     const dateField = page.properties[PROP_DATE];
     const blocksField = page.properties[PROP_BLOCKS];
     const sendToCalendar = page.properties[PROP_SEND]?.checkbox;
+    console.log(page);
+    console.log(page.properties);
     console.log("data field: " + dateField);
     console.log("blocks field: " + blocksField);
     console.log("calendar field: " + sendToCalendar);
 
-    if (!updatedProps.includes(decodeURIComponent(PROP_SEND))) {
+    if (!updatedProps.includes(PROP_SEND)) {
       return res.json({ ignored: "No toggle" });
     }
 
