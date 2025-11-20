@@ -74,9 +74,9 @@ app.post("/notion-hook", async (req, res) => {
 
     // Fetch full Notion page data
     const page = await notion.pages.retrieve({ page_id: pageId });
-    const dateField = page.properties[PROP_DATE];
-    const blocksField = page.properties[PROP_BLOCKS];
-    const sendToCalendar = page.properties[PROP_SEND]?.checkbox;
+    const dateField = page.properties["Date"];
+    const blocksField = page.properties["Choose daily blocks"];
+    const sendToCalendar = page.properties["SendToCalendar"]?.checkbox;
     console.log(page);
     console.log(page.properties);
     console.log("data field: " + dateField);
