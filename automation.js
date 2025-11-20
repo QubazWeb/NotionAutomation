@@ -112,25 +112,18 @@ app.post("/notion-hook", async (req, res) => {
       const eventEnd = new Date(eventStart.getTime() + duration * 60000);
 
       // Create event in Google Calendar
-      calendar.events
-        .insert({
-          calendarId: process.env.GCAL_ID,
-          resource: {
-            summary: "DEBUG TEST EVENT",
-            start: { dateTime: new Date().toISOString() },
-            end: {
-              dateTime: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-            },
-          },
-        })
-        .then(() => console.log("🔥 Test event created"))
-        .catch((err) => console.error("Test error:", err));
       await calendar.events.insert({
-        calendarId: process.env.GCAL_ID,
+        calendarId: process.env.GOOGLE_CAL_ID,
         resource: {
           summary: name,
-          start: { dateTime: eventStart.toISOString() },
-          end: { dateTime: eventEnd.toISOString() },
+          start: {
+            dateTime: eventStart.toISOString(),
+            timeZone: "Europe/Warsaw",
+          },
+          end: {
+            dateTime: eventEnd.toISOString(),
+            timeZone: "Europe/Warsaw",
+          },
         },
       });
 
