@@ -63,7 +63,6 @@ app.post("/notion-hook", async (req, res) => {
 
   try {
     const eventType = req.body.type;
-    console.log("Property keys:", Object.keys(page.properties));
     // We only care about property updates
     if (eventType !== "page.properties_updated") {
       return res.json({ ignored: true });
